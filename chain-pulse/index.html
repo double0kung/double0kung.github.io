@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-kcsWYPLvw3yOweHhKFWLSefaavIF6DOh3YrxGbOHZa8='; style-src 'unsafe-inline'; connect-src https://mempool.space https://api.blockchain.info https://eth.blockscout.com https://ethereum-rpc.publicnode.com https://eth.llamarpc.com https://eth.drpc.org https://1rpc.io https://data-api.binance.vision https://api.binance.com https://api.exchange.coinbase.com; img-src data:; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-9LNLPENTllak56ZyUzPC6Vg9fLnkuQyjKDqU8JYAros='; style-src 'unsafe-inline'; connect-src https://mempool.space https://api.blockchain.info https://eth.blockscout.com https://ethereum-rpc.publicnode.com https://eth.llamarpc.com https://eth.drpc.org https://1rpc.io https://data-api.binance.vision https://api.binance.com https://api.exchange.coinbase.com; img-src data:; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Chain Pulse — BTC & ETH demand / sell-off monitor</title>
@@ -79,6 +79,12 @@ svg.spark{display:block;width:120px;height:40px}
 .feed .t{color:var(--faint)}
 .feed .a{text-align:right;font-weight:600}
 .tag{font-size:10.5px;letter-spacing:.08em;border:1px solid currentColor;border-radius:4px;padding:0 4px;margin-right:4px}
+.hz{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.hz button{padding:5px 11px;font-size:13px}
+.hz button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--bg);font-weight:700}
+.prob{display:flex;justify-content:space-between;align-items:baseline;font-weight:700;font-size:17px}
+.split{display:flex;height:10px;border-radius:5px;overflow:hidden;margin:6px 0 4px;background:var(--panel2)}
+.split i{display:block;height:100%}
 .livehead{display:flex;align-items:center;gap:8px}
 .livehead h2{margin:18px 0 8px}
 details.inner{margin-top:10px;background:none;border:0;border-top:1px solid var(--line);border-radius:0;padding:8px 0 0}
@@ -104,8 +110,8 @@ details p,details li{color:var(--muted);font-size:13.5px}
   </header>
 
   <div class="grid">
-    <section class="card" id="btc"><div id="btc-main" aria-live="polite"><div class="note">Loading Bitcoin…</div></div><div id="btc-live"></div></section>
-    <section class="card" id="eth"><div id="eth-main" aria-live="polite"><div class="note">Loading Ethereum…</div></div><div id="eth-live"></div></section>
+    <section class="card" id="btc"><div id="btc-main" aria-live="polite"><div class="note">Loading Bitcoin…</div></div><div id="btc-out"></div><div id="btc-live"></div></section>
+    <section class="card" id="eth"><div id="eth-main" aria-live="polite"><div class="note">Loading Ethereum…</div></div><div id="eth-out"></div><div id="eth-live"></div></section>
   </div>
 
   <details>
@@ -119,6 +125,7 @@ details p,details li{color:var(--muted);font-size:13.5px}
       <li><b>Network activity</b> (intensity): fees, backlog, block fullness and transaction counts. A busy chain amplifies the direction (up to 1.4×); a quiet one damps it (down to 0.6×).</li>
     </ul>
     <p>Score runs −100 (sell-off) to +100 (demand). Above +40 strong demand, +15 to +40 demand building, −15 to +15 neutral, −15 to −40 selling pressure, below −40 sell-off.</p>
+    <p><b>Price outlook.</b> For each time horizon the page finds the past hours (about 41 days of hourly data) that looked most like the current one, by 6-hour and 24-hour momentum and order flow, and counts how often price was higher afterwards. The ranges come from how far price actually moved over that horizon, scaled to current volatility. The method is replayed on its own history and its hit rate is shown, so you can see how much to trust it. Short-term direction is hard to predict: expect figures close to 50%.</p>
     <p><b>Limits.</b> The exchange wallet list is a sample of publicly labelled wallets, not total exchange flow, and exchanges reshuffle wallets internally (a hot-to-cold move between two watched wallets nets to zero). Full exchange-flow data needs a paid provider (Glassnode, CryptoQuant). This is a heuristic indicator, not financial advice.</p>
   </details>
   <div class="src" id="src"></div>
@@ -249,6 +256,73 @@ async function market(sym) { // sym: BTC | ETH
   const rows = c.slice(0, 168).reverse(), close = rows.map(r => +r[4]), n = close.length;
   return { price: close[n - 1], chg24: close[n - 1] / close[Math.max(0, n - 25)] - 1, chg7d: close[n - 1] / +rows[0][3] - 1,
     buy24: NaN, buy7d: NaN, volRatio: NaN, series: close };
+}
+
+/* ---------- price outlook (probabilities) ---------- */
+const HORIZONS = [1, 3, 6, 12, 24];
+var hz = 3;
+const OUT = {};
+function klinesLong(sym) {
+  return cached("kl" + sym, SLOW_TTL, async () => {
+    for (const h of MARKET_HOSTS) {
+      try {
+        const k = await getJSON(`${h}/api/v3/klines?symbol=${sym}USDT&interval=1h&limit=1000`, null, "Binance market data");
+        if (Array.isArray(k) && k.length > 200) return { c: k.map(r => +r[4]), v: k.map(r => +r[5]), b: k.map(r => +r[9]), flow: true };
+      } catch (e) { /* next host */ }
+    }
+    const c = await getJSON(`https://api.exchange.coinbase.com/products/${sym}-USD/candles?granularity=3600`, null, "Coinbase market data");
+    return { c: c.slice().reverse().map(r => +r[4]), v: [], b: [], flow: false };
+  });
+}
+// For each horizon: find the past hours that looked most like now (momentum over 6h and 24h, order flow),
+// and count how often price was higher afterwards. Then replay the same method on past data to see how often it was right.
+function buildOutlook(d) {
+  const c = d.c, n = c.length; if (n < 260) return null;
+  const lr = [0]; for (let i = 1; i < n; i++) lr[i] = Math.log(c[i] / c[i - 1]);
+  const vol = [], F = [];
+  for (let i = 24; i < n; i++) {
+    let s = 0, s2 = 0; for (let j = i - 23; j <= i; j++) { s += lr[j]; s2 += lr[j] * lr[j]; }
+    const sd = Math.sqrt(Math.max(1e-12, s2 / 24 - (s / 24) ** 2)); vol[i] = sd;
+    const f = [Math.log(c[i] / c[i - 6]) / (sd * Math.sqrt(6)), Math.log(c[i] / c[i - 24]) / (sd * Math.sqrt(24))];
+    if (d.flow) { let v = 0, b = 0; for (let j = i - 5; j <= i; j++) { v += d.v[j]; b += d.b[j]; } f.push(v ? (b / v - 0.5) / 0.05 : 0); }
+    F[i] = f;
+  }
+  const predict = (t, h, maxI) => {
+    const cand = [], ft = F[t];
+    for (let i = 24; i <= maxI; i++) { let s = 0; for (let k = 0; k < ft.length; k++) s += (ft[k] - F[i][k]) ** 2; cand.push([s, i]); }
+    if (cand.length < 100) return null;
+    cand.sort((a, b) => a[0] - b[0]);
+    const k = Math.max(20, Math.min(80, Math.floor(cand.length * 0.15)));
+    let ups = 0; for (let q = 0; q < k; q++) if (c[cand[q][1] + h] > c[cand[q][1]]) ups++;
+    return { p: (ups + 10) / (k + 20), k }; // shrunk toward 50%
+  };
+  const out = {}, last = n - 1;
+  for (const h of HORIZONS) {
+    const pr = predict(last, h, last - h); if (!pr) continue;
+    const z = []; for (let i = 24; i <= last - h; i++) z.push(Math.log(c[i + h] / c[i]) / (vol[i] * Math.sqrt(h)));
+    z.sort((a, b) => a - b);
+    const lvl = q => c[last] * Math.exp(z[Math.min(z.length - 1, Math.floor(q * z.length))] * vol[last] * Math.sqrt(h));
+    let hit = 0, tot = 0;
+    for (let t = 24 + h + 150; t <= last - h; t += 2) { const r = predict(t, h, t - h); if (!r || r.p === 0.5) continue; tot++; if ((r.p > 0.5) === (c[t + h] > c[t])) hit++; }
+    out[h] = { p: pr.p, k: pr.k, lo68: lvl(0.16), hi68: lvl(0.84), lo90: lvl(0.05), hi90: lvl(0.95), acc: tot >= 30 ? hit / tot : NaN, tot, days: n / 24 };
+  }
+  return out;
+}
+function renderOutlook(key) {
+  const el = document.getElementById(key + "-out"); if (!el) return;
+  const o = OUT[key];
+  let h = `<h2>Price outlook</h2><div class="hz" role="group" aria-label="Time horizon">` + HORIZONS.map(x => `<button type="button" data-hz="${x}" aria-pressed="${x === hz}">${x}h</button>`).join("") + `</div>`;
+  const r = o && o[hz];
+  if (!r) { el.innerHTML = h + `<div class="note">${o === null ? "Not enough price history available for an outlook." : "Loading price history…"}</div>`; return; }
+  const up = Math.round(r.p * 100), dn = 100 - up, edge = Math.abs(r.p - 0.5);
+  const lean = edge < 0.05 ? "No clear edge: close to a coin flip" : (edge < 0.1 ? "Slight lean " : "Leans ") + (r.p > 0.5 ? "up" : "down");
+  const d = lastPrice[key] < 100 ? 2 : 0, usd = x => "$" + fmt(x, d);
+  h += `<div class="prob num"><span class="up">▲ ${up}% higher</span><span class="down">${dn}% lower ▼</span></div>
+    <div class="split" role="img" aria-label="${up}% chance higher, ${dn}% chance lower in ${hz} hours"><i style="width:${up}%;background:var(--up)"></i><i style="width:${dn}%;background:var(--down)"></i></div>
+    <div class="note"><b>${lean}</b> over the next ${hz} hour${hz > 1 ? "s" : ""}.</div>
+    <div class="stats" style="margin-top:8px">${stat("Likely range (68%)", usd(r.lo68) + " – " + usd(r.hi68))}${stat("Wide range (90%)", usd(r.lo90) + " – " + usd(r.hi90))}</div>
+    <div class="note" style="margin-top:8px">Based on the ${r.k} past hours most similar to now (6h and 24h momentum${o.flow ? ", order flow" : ""}) in the last ${Math.round(r.days)} days. ${ok(r.acc) ? `Replayed on that history, this method called the ${hz}h direction right <b>${(r.acc * 100).toFixed(0)}%</b> of ${r.tot} times.` : ""} Near 50% means no real edge.</div>`;
+  el.innerHTML = h;
 }
 
 /* ---------- BTC network ---------- */
@@ -527,13 +601,17 @@ async function tick() {
   const dot = document.getElementById("dot"), stamp = document.getElementById("stamp");
   stamp.textContent = "Updating…";
   try {
-    const [bm, em, bn, en, bw, ew] = await Promise.all([
+    const [bm, em, bn, en, bw, ew, bk, ek] = await Promise.all([
       soft(market("BTC")), soft(market("ETH")), soft(btcNetwork()), soft(ethNetwork()),
-      soft(cached("btcW", SLOW_TTL, btcWallets)), soft(cached("ethW", SLOW_TTL, ethWallets))
+      soft(cached("btcW", SLOW_TTL, btcWallets)), soft(cached("ethW", SLOW_TTL, ethWallets)),
+      soft(klinesLong("BTC")), soft(klinesLong("ETH"))
     ]);
+    for (const [k, d] of [["btc", bk], ["eth", ek]]) {
+      if (d) { if (!d.o) { d.o = buildOutlook(d); if (d.o) d.o.flow = d.flow; } OUT[k] = d.o; } else if (!OUT[k]) OUT[k] = null;
+    }
     pushHist("btc", render("btc", "Bitcoin · BTC", bm, bn && bn.parts.length ? bn : null, bw, history.btc.map(p => p[1])));
     pushHist("eth", render("eth", "Ethereum · ETH", em, en && en.parts.length ? en : null, ew, history.eth.map(p => p[1])));
-    saveHist();
+    saveHist(); renderOutlook("btc"); renderOutlook("eth");
     const any = bm || em || (bn && bn.parts.length) || (en && en.parts.length);
     dot.className = "dot " + (any ? "live" : "err");
     stamp.textContent = any ? "Updated " + new Date().toLocaleTimeString() : "Offline";
@@ -543,6 +621,10 @@ async function tick() {
 }
 if (typeof document !== "undefined" && document.getElementById("refresh")) {
   document.getElementById("refresh").addEventListener("click", tick);
+  try { const v = +localStorage.getItem("chainpulse-hz"); if (HORIZONS.includes(v)) hz = v; } catch (e) {}
+  document.addEventListener("click", e => { const b = e.target.closest && e.target.closest("[data-hz]"); if (!b) return;
+    hz = +b.dataset.hz; try { localStorage.setItem("chainpulse-hz", hz); } catch (e2) {} renderOutlook("btc"); renderOutlook("eth"); });
+  renderOutlook("btc"); renderOutlook("eth");
   document.addEventListener("toggle", e => { const k = e.target && e.target.dataset && e.target.dataset.w; if (k) openW[k] = e.target.open; }, true);
   loadHist(); loadLive(); tick(); setInterval(() => { if (!document.hidden) tick(); }, REFRESH_MS);
   for (const k of ["btc", "eth"]) { renderLive(k); livePoll(k); setInterval(() => { if (!document.hidden) livePoll(k); }, LIVE_CFG[k].every); }
