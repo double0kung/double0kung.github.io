@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-kcsWYPLvw3yOweHhKFWLSefaavIF6DOh3YrxGbOHZa8='; style-src 'unsafe-inline'; connect-src https://mempool.space https://api.blockchain.info https://eth.blockscout.com https://ethereum-rpc.publicnode.com https://eth.llamarpc.com https://eth.drpc.org https://1rpc.io https://data-api.binance.vision https://api.binance.com https://api.exchange.coinbase.com; img-src data:; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chain Pulse — BTC & ETH demand / sell-off monitor</title>
+<style>
+:root{
+  --bg:#0c1014; --panel:#141a21; --panel2:#1a222b; --line:#26313d;
+  --text:#e8edf2; --muted:#8b98a7; --faint:#5d6a79;
+  --up:#2fd0a5; --down:#ff6b5e; --flat:#c9b458; --accent:#7aa7ff;
+}
+@media (prefers-color-scheme: light){
+  :root{ --bg:#f3f1ec; --panel:#ffffff; --panel2:#f7f5f0; --line:#e0dcd2;
+    --text:#161a1f; --muted:#5c6570; --faint:#8d949c;
+    --up:#0b8f6d; --down:#d0382b; --flat:#8a7416; --accent:#2c5fd0; }
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--text);
+  font:15px/1.45 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  -webkit-font-smoothing:antialiased}
+.num{font-variant-numeric:tabular-nums;font-feature-settings:"tnum"}
+.wrap{max-width:1120px;margin:0 auto;padding:18px 14px 48px}
+header{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+h1{font-size:20px;letter-spacing:.14em;text-transform:uppercase;margin:0;font-weight:700}
+h1 span{color:var(--accent)}
+.sub{color:var(--muted);font-size:13px;margin-top:2px}
+.status{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:13px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--faint);display:inline-block}
+.dot.live{background:var(--up);animation:pulse 2s infinite}
+.dot.err{background:var(--down)}
+@keyframes pulse{50%{opacity:.35}}
+@media (prefers-reduced-motion:reduce){.dot.live{animation:none}}
+button{font:inherit;color:var(--text);background:var(--panel2);border:1px solid var(--line);
+  border-radius:8px;padding:7px 12px;cursor:pointer}
+button:hover{border-color:var(--accent)}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.grid{display:grid;gap:14px;grid-template-columns:1fr}
+@media (min-width:900px){.grid{grid-template-columns:1fr 1fr}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px}
+.top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.asset{font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.price{font-size:26px;font-weight:700;line-height:1.1;margin-top:2px}
+.chg{font-size:13px;margin-top:2px}
+.up{color:var(--up)} .down{color:var(--down)} .flat{color:var(--flat)} .mut{color:var(--muted)}
+.verdict{margin:14px 0 6px;padding:12px;border-radius:10px;background:var(--panel2);border-left:4px solid var(--flat)}
+.verdict.up{border-left-color:var(--up)} .verdict.down{border-left-color:var(--down)}
+.verdict .lab{font-size:19px;font-weight:700;color:var(--text)}
+.verdict .lab b{font-weight:700}
+.verdict .why{font-size:13.5px;color:var(--muted);margin-top:3px}
+.gauge{position:relative;height:10px;border-radius:5px;margin:14px 0 4px;
+  background:linear-gradient(90deg,var(--down),var(--flat) 50%,var(--up));opacity:.9}
+.gauge i{position:absolute;top:-5px;width:4px;height:20px;border-radius:2px;background:var(--text);
+  transform:translateX(-2px);box-shadow:0 0 0 2px var(--panel)}
+.gl{display:flex;justify-content:space-between;font-size:11px;color:var(--faint);letter-spacing:.08em;text-transform:uppercase}
+h2{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:18px 0 8px;font-weight:600}
+.comp{display:grid;grid-template-columns:1fr auto;gap:2px 10px;padding:8px 0;border-top:1px solid var(--line)}
+.comp .n{font-weight:600}
+.comp .v{text-align:right;font-weight:600}
+.comp .d{grid-column:1/-1;color:var(--muted);font-size:13px}
+.bar{grid-column:1/-1;position:relative;height:6px;background:var(--panel2);border-radius:3px;margin-top:4px;overflow:hidden}
+.bar:before{content:"";position:absolute;left:50%;top:0;bottom:0;width:1px;background:var(--faint)}
+.bar i{position:absolute;top:0;bottom:0;border-radius:3px}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.stat{background:var(--panel2);border-radius:8px;padding:8px 10px}
+.stat .k{font-size:11.5px;color:var(--muted)}
+.stat .s{font-weight:600}
+svg.spark{display:block;width:120px;height:40px}
+.sparkwrap{text-align:right;font-size:11px;color:var(--faint)}
+.wal{width:100%;border-collapse:collapse;font-size:13px}
+.wal td{padding:5px 0;border-top:1px solid var(--line)}
+.wal td:last-child,.wal td:nth-child(2){text-align:right}
+.note{color:var(--muted);font-size:13px}
+.feed{list-style:none;margin:8px 0 0;padding:0;font-size:13px;max-height:260px;overflow:auto}
+.feed li{display:grid;grid-template-columns:auto 1fr auto;gap:8px;padding:5px 0;border-top:1px solid var(--line)}
+.feed .t{color:var(--faint)}
+.feed .a{text-align:right;font-weight:600}
+.tag{font-size:10.5px;letter-spacing:.08em;border:1px solid currentColor;border-radius:4px;padding:0 4px;margin-right:4px}
+.livehead{display:flex;align-items:center;gap:8px}
+.livehead h2{margin:18px 0 8px}
+details.inner{margin-top:10px;background:none;border:0;border-top:1px solid var(--line);border-radius:0;padding:8px 0 0}
+details.inner summary{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+details{margin-top:14px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px 16px}
+summary{cursor:pointer;font-weight:600}
+details p,details li{color:var(--muted);font-size:13.5px}
+.src{font-size:12px;color:var(--faint);margin-top:10px}
+.src .bad{color:var(--down)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Chain <span>Pulse</span></h1>
+      <div class="sub">Live BTC &amp; ETH network demand vs sell-off</div>
+    </div>
+    <div class="status">
+      <span><span class="dot" id="dot"></span> <span id="stamp">Loading…</span></span>
+      <button id="refresh" type="button">Refresh</button>
+    </div>
+  </header>
+
+  <div class="grid">
+    <section class="card" id="btc"><div id="btc-main" aria-live="polite"><div class="note">Loading Bitcoin…</div></div><div id="btc-live"></div></section>
+    <section class="card" id="eth"><div id="eth-main" aria-live="polite"><div class="note">Loading Ethereum…</div></div><div id="eth-live"></div></section>
+  </div>
+
+  <details>
+    <summary>How the reading is worked out</summary>
+    <p>Blockchain activity shows <em>how much</em> is happening, not which way. A fee spike can be a rush to buy or a rush to exit. So the score combines direction with intensity:</p>
+    <ul>
+      <li><b>Price momentum</b> (45% of direction): 24-hour and 7-day price change.</li>
+      <li><b>Order flow</b> (35%): share of traded volume where the buyer crossed the spread (taker buys). Above 50% means buyers are the aggressors.</li>
+      <li><b>Exchange wallets</b> (20%): net change in the balances of known exchange wallets, over 24 hours where history is available and from the live feed otherwise. Coins moving in are typically headed for sale; coins moving out, for holding.</li>
+      <li><b>Live exchange flow</b>: the same wallets re-checked every 15 seconds (ETH) or 60 seconds (BTC, including unconfirmed transactions). Every balance change shows as an IN or OUT entry. The feed builds while this page is open and is kept for 24 hours in this browser.</li>
+      <li><b>Network activity</b> (intensity): fees, backlog, block fullness and transaction counts. A busy chain amplifies the direction (up to 1.4×); a quiet one damps it (down to 0.6×).</li>
+    </ul>
+    <p>Score runs −100 (sell-off) to +100 (demand). Above +40 strong demand, +15 to +40 demand building, −15 to +15 neutral, −15 to −40 selling pressure, below −40 sell-off.</p>
+    <p><b>Limits.</b> The exchange wallet list is a sample of publicly labelled wallets, not total exchange flow, and exchanges reshuffle wallets internally (a hot-to-cold move between two watched wallets nets to zero). Full exchange-flow data needs a paid provider (Glassnode, CryptoQuant). This is a heuristic indicator, not financial advice.</p>
+  </details>
+  <div class="src" id="src"></div>
+</div>
+
+<script>
+"use strict";
+/* ---------- config ---------- */
+const REFRESH_MS = 90000, SLOW_TTL = 10 * 60000;
+const RPCS = ["https://ethereum-rpc.publicnode.com", "https://eth.llamarpc.com", "https://eth.drpc.org", "https://1rpc.io/eth"];
+const MARKET_HOSTS = ["https://data-api.binance.vision", "https://api.binance.com"];
+const MEMPOOL = "https://mempool.space/api";
+const BTC_WALLETS = [
+  ["Binance cold", "34xp4vRoCGJym3xR7yCVPFHoCNxv4Twseo"],
+  ["Binance cold 2", "3M219KR5vEneNb47ewrPfWyb5jQ2DjxRP6"],
+  ["Bitfinex cold", "bc1qgdjqv0av3q56jvd82tkdjpy7gdp9ut8tlqmgrpmv24sq90ecnvqqjwvw97"],
+  ["Robinhood cold", "bc1qazcm763858nkj2dj986etajv6wquslv8uxwczt"]
+];
+const BTC_LIVE = BTC_WALLETS.concat([
+  ["Binance hot", "1NDyJtNTjmwk5xPNhjgAMu4HDHigtobu1s"],
+  ["Binance 3", "bc1qm34lsc65zpw79lxes69zkqmk6ee3ewf0j77s3h"],
+  ["Bitfinex hot", "1Kr6QSydW9bFQG1mXiPNNu6WpJGmUa9i1g"]
+]);
+const ETH_WALLETS = [
+  ["Binance 14 hot", "0x28C6c06298d514Db089934071355E5743bf21d60"],
+  ["Binance 15 hot", "0x21a31Ee1afC51d94C2eFcCAa2092aD1028285549"],
+  ["Binance 16 hot", "0xDFd5293D8e347dFe59E90eFd55b2956a1343963d"],
+  ["Binance 8 cold", "0xF977814e90dA44bFA03b6295A0616a897441aceC"],
+  ["Binance 7 cold", "0xBE0eB53F46cd790Cd13851d5EFf43D12404d33E8"],
+  ["Coinbase 10", "0xA9D1e08C7793af67e9d92fe308d5697FB81d3E43"],
+  ["Coinbase 1", "0x71660c4005BA85c37ccec55d0C4493E66Fe775d3"],
+  ["Kraken 13", "0xDA9dfA130Df4dE4673b89022EE50ff26f6EA73Cf"],
+  ["Kraken 4", "0x267be1C1D684F78cb4F6a176C4911b741E4Ffdc0"],
+  ["OKX", "0x6cC5F688a315f3dC28A7781717a9A798a59fDA7b"],
+  ["Bybit hot", "0xf89d7b9c864f589bbF53a82105107622B35EaA40"],
+  ["Bitfinex hot", "0x77134cbC06cB00b66F4c7e623D5fdBF6777635EC"],
+  ["Crypto.com", "0x6262998Ced04146fA42253a5C0AF90CA02dfd2A3"],
+  ["Gate.io", "0x0D0707963952f2fBA59dD06f2b425ace40b492Fe"],
+  ["Robinhood", "0x40B38765696e3d5d8d9d834D8AAD4bB6e418E489"]
+];
+const LIVE_CFG = { btc: { wallets: BTC_LIVE, min: 0.5, every: 60000 }, eth: { wallets: ETH_WALLETS, min: 25, every: 15000 } };
+const EXCH_SCALE = { btc: 2000, eth: 30000 }; // net 24h flow that counts as "extreme"
+
+/* ---------- helpers ---------- */
+const clamp = (x, a = -1, b = 1) => Math.max(a, Math.min(b, x));
+const c01 = x => clamp(x, 0, 1);
+const mean = a => a.length ? a.reduce((s, x) => s + x, 0) / a.length : NaN;
+const median = a => { if (!a.length) return NaN; const s = [...a].sort((x, y) => x - y), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+const ok = x => typeof x === "number" && isFinite(x);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const fmt = (x, d = 0) => ok(x) ? x.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d }) : "—";
+const pct = (x, d = 1) => ok(x) ? (x >= 0 ? "+" : "−") + Math.abs(x * 100).toFixed(d) + "%" : "—";
+const signed = (x, d = 0) => ok(x) ? (x >= 0 ? "+" : "−") + fmt(Math.abs(x), d) : "—";
+const cls = x => !ok(x) ? "mut" : x > 0.0005 ? "up" : x < -0.0005 ? "down" : "flat";
+const arrow = x => !ok(x) ? "" : x > 0.0005 ? "▲" : x < -0.0005 ? "▼" : "■";
+const compact = x => !ok(x) ? "—" : Math.abs(x) >= 1e9 ? (x / 1e9).toFixed(2) + "B" : Math.abs(x) >= 1e6 ? (x / 1e6).toFixed(2) + "M" : Math.abs(x) >= 1e3 ? (x / 1e3).toFixed(1) + "k" : fmt(x);
+
+const sources = {};
+async function getJSON(url, opts, label) {
+  const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 12000);
+  try {
+    const r = await fetch(url, Object.assign({ signal: ctl.signal }, opts || {}));
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const j = await r.json();
+    if (label) sources[label] = true;
+    return j;
+  } catch (e) { if (label) sources[label] = false; throw e; }
+  finally { clearTimeout(t); }
+}
+const cache = {};
+async function cached(key, ttl, fn) {
+  const c = cache[key];
+  if (c && Date.now() - c.t < ttl) return c.v;
+  const v = await fn();
+  cache[key] = { t: Date.now(), v };
+  return v;
+}
+const soft = p => p.then(v => v, () => null); // failure -> null, never throws
+
+let rpcIdx = 0;
+async function rpc(method, params) {
+  let err;
+  for (let k = 0; k < RPCS.length; k++) {
+    const i = (rpcIdx + k) % RPCS.length;
+    try {
+      const j = await getJSON(RPCS[i], { method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }) }, "Ethereum RPC");
+      if (j.error || j.result == null) throw new Error(j.error ? j.error.message : "empty result");
+      rpcIdx = i; return j.result;
+    } catch (e) { err = e; }
+  }
+  sources["Ethereum RPC"] = false;
+  throw err;
+}
+async function rpcBatch(calls) { // calls: [[method, params], ...] -> results in order
+  for (let k = 0; k < RPCS.length; k++) {
+    const i = (rpcIdx + k) % RPCS.length;
+    try {
+      const j = await getJSON(RPCS[i], { method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify(calls.map((c, n) => ({ jsonrpc: "2.0", id: n, method: c[0], params: c[1] }))) }, "Ethereum RPC");
+      if (!Array.isArray(j) || j.length !== calls.length) throw new Error("no batch");
+      const out = new Array(calls.length);
+      for (const r of j) { if (r.error || r.result == null) throw new Error("batch item failed"); out[r.id] = r.result; }
+      rpcIdx = i; return out;
+    } catch (e) { /* next host */ }
+  }
+  const out = []; for (const c of calls) out.push(await rpc(c[0], c[1])); // fallback: one at a time
+  return out;
+}
+const hexNum = h => Number(BigInt(h));
+const weiToEth = h => Number(BigInt(h) / 10n ** 14n) / 1e4;
+
+/* ---------- market (price + order flow) ---------- */
+async function market(sym) { // sym: BTC | ETH
+  for (const h of MARKET_HOSTS) {
+    try {
+      const k = await getJSON(`${h}/api/v3/klines?symbol=${sym}USDT&interval=1h&limit=168`, null, "Binance market data");
+      if (!Array.isArray(k) || k.length < 30) throw new Error("short");
+      const close = k.map(r => +r[4]), vol = k.map(r => +r[5]), buy = k.map(r => +r[9]);
+      const n = close.length, sum = a => a.reduce((s, x) => s + x, 0);
+      const v24 = sum(vol.slice(-24)), b24 = sum(buy.slice(-24));
+      return { price: close[n - 1], chg24: close[n - 1] / close[n - 25] - 1, chg7d: close[n - 1] / +k[0][1] - 1,
+        buy24: v24 ? b24 / v24 : NaN, buy7d: sum(buy) / sum(vol), volRatio: v24 / (sum(vol) / (n / 24)), series: close };
+    } catch (e) { /* next host */ }
+  }
+  // fallback: Coinbase candles (no taker split)
+  const c = await getJSON(`https://api.exchange.coinbase.com/products/${sym}-USD/candles?granularity=3600`, null, "Coinbase market data");
+  const rows = c.slice(0, 168).reverse(), close = rows.map(r => +r[4]), n = close.length;
+  return { price: close[n - 1], chg24: close[n - 1] / close[Math.max(0, n - 25)] - 1, chg7d: close[n - 1] / +rows[0][3] - 1,
+    buy24: NaN, buy7d: NaN, volRatio: NaN, series: close };
+}
+
+/* ---------- BTC network ---------- */
+async function btcNetwork() {
+  const [fees, mp, blocks, txc] = await Promise.all([
+    soft(getJSON(MEMPOOL + "/v1/fees/recommended", null, "mempool.space")),
+    soft(getJSON(MEMPOOL + "/mempool", null, "mempool.space")),
+    soft(getJSON(MEMPOOL + "/v1/blocks", null, "mempool.space")),
+    soft(cached("btcTx", SLOW_TTL, () => getJSON("https://api.blockchain.info/charts/n-transactions?timespan=30days&format=json&cors=true", null, "blockchain.info")))
+  ]);
+  const o = { parts: [] };
+  if (fees && ok(fees.fastestFee)) {
+    o.fee = fees.fastestFee; o.feeEco = fees.economyFee;
+    o.parts.push([0.4, c01(Math.log10(Math.max(1, o.fee)) / 2)]);
+  }
+  if (mp && ok(mp.vsize)) {
+    o.mpCount = mp.count; o.backlog = mp.vsize / 1e6;
+    o.parts.push([0.3, c01(Math.log10(1 + o.backlog) / Math.log10(51))]);
+  }
+  if (Array.isArray(blocks) && blocks.length) {
+    o.height = blocks[0].height;
+    o.blockTx = mean(blocks.map(b => b.tx_count).filter(ok));
+    o.blockAge = Date.now() / 1000 - blocks[0].timestamp;
+  }
+  if (txc && Array.isArray(txc.values) && txc.values.length > 5) {
+    const ys = txc.values.map(p => p.y).filter(ok), last = ys[ys.length - 1], base = mean(ys.slice(0, -1));
+    o.txDay = last; o.txTrend = last / base - 1; o.txSeries = ys;
+    o.parts.push([0.3, c01(0.5 + o.txTrend * 2)]);
+  }
+  o.activity = wavg(o.parts);
+  return o;
+}
+function wavg(parts) { const w = parts.reduce((s, p) => s + p[0], 0); return w ? parts.reduce((s, p) => s + p[0] * p[1], 0) / w : NaN; }
+
+/* ---------- ETH network ---------- */
+async function feeChunk(newest) {
+  const r = await rpc("eth_feeHistory", ["0x400", newest, []]);
+  return { oldest: hexNum(r.oldestBlock), base: r.baseFeePerGas.slice(0, r.gasUsedRatio.length).map(h => hexNum(h) / 1e9), used: r.gasUsedRatio };
+}
+async function ethNetwork() {
+  const o = { parts: [] };
+  const head = await soft(feeChunk("latest"));
+  if (head) {
+    o.height = head.oldest + head.base.length - 1;
+    const older = await soft(cached("ethOlder", SLOW_TTL, async () => {
+      const out = []; let oldest = head.oldest;
+      for (let i = 0; i < 6; i++) {
+        const c = await soft(feeChunk("0x" + (oldest - 1).toString(16)));
+        if (!c) break; out.unshift(c); oldest = c.oldest;
+      }
+      return out;
+    })) || [];
+    const base = [].concat(...older.map(c => c.base), head.base);
+    o.baseNow = mean(head.base.slice(-25));
+    o.util = mean(head.used.slice(-300));
+    o.baseMed = median(base);
+    o.hours = base.length * 12 / 3600;
+    o.baseSeries = downsample(base, 80);
+    o.parts.push([0.3, c01(0.5 + (o.util - 0.5) * 5)]);
+    if (o.baseMed > 0 && base.length > 1500) { o.baseTrend = o.baseNow / o.baseMed - 1; o.parts.push([0.25, c01(0.5 + Math.log2(o.baseNow / o.baseMed) * 0.35)]); }
+    o.parts.push([0.2, c01(Math.log10(Math.max(0.1, o.baseNow) * 10) / 2.5)]);
+  }
+  const ch = await soft(cached("ethTx", SLOW_TTL, () => getJSON("https://eth.blockscout.com/api/v2/stats/charts/transactions", null, "Blockscout")));
+  if (ch && Array.isArray(ch.chart_data) && ch.chart_data.length > 5) {
+    const rows = ch.chart_data.map(d => [d.date, +(d.transaction_count ?? d.tx_count)]).filter(d => ok(d[1]) && d[1] > 0).sort((a, b) => a[0] < b[0] ? -1 : 1);
+    const today = new Date().toISOString().slice(0, 10);
+    const ys = rows.filter(d => d[0] < today).map(d => d[1]); // drop the partial current day
+    if (ys.length > 5) {
+      const last = ys[ys.length - 1], base = mean(ys.slice(0, -1));
+      o.txDay = last; o.txTrend = last / base - 1;
+      o.parts.push([0.25, c01(0.5 + o.txTrend * 2)]);
+    }
+  }
+  o.activity = wavg(o.parts);
+  return o;
+}
+function downsample(a, n) { if (a.length <= n) return a; const out = [], step = a.length / n; for (let i = 0; i < n; i++) out.push(mean(a.slice(Math.floor(i * step), Math.floor((i + 1) * step)))); return out; }
+
+/* ---------- exchange wallets ---------- */
+async function btcWallets() {
+  const since = Date.now() / 1000 - 86400, rows = [];
+  for (const [name, addr] of BTC_WALLETS) {
+    const info = await soft(getJSON(`${MEMPOOL}/address/${addr}`, null, "mempool.space"));
+    if (!info || !info.chain_stats) continue;
+    const bal = (info.chain_stats.funded_txo_sum - info.chain_stats.spent_txo_sum) / 1e8;
+    const txs = await soft(getJSON(`${MEMPOOL}/address/${addr}/txs`, null, "mempool.space"));
+    let net = null, partial = false;
+    if (Array.isArray(txs)) {
+      net = 0; let confirmed = 0, allRecent = true;
+      for (const tx of txs) {
+        const t = tx.status && tx.status.confirmed ? tx.status.block_time : Date.now() / 1000;
+        if (tx.status && tx.status.confirmed) { confirmed++; if (t < since) allRecent = false; }
+        if (t < since) continue;
+        for (const v of tx.vout || []) if (v.scriptpubkey_address === addr) net += v.value;
+        for (const v of tx.vin || []) if (v.prevout && v.prevout.scriptpubkey_address === addr) net -= v.prevout.value;
+      }
+      net /= 1e8; partial = confirmed >= 25 && allRecent;
+    }
+    rows.push({ name, bal, net, partial });
+  }
+  return rows;
+}
+async function ethWallets() {
+  const head = hexNum(await rpc("eth_blockNumber", [])), past = "0x" + (head - 7200).toString(16);
+  const now = await rpcBatch(ETH_WALLETS.map(w => ["eth_getBalance", [w[1], "latest"]]));
+  const then = await soft(rpcBatch(ETH_WALLETS.map(w => ["eth_getBalance", [w[1], past]])));
+  return ETH_WALLETS.map((w, i) => { const bal = weiToEth(now[i]); return { name: w[0], bal, net: then ? bal - weiToEth(then[i]) : null, partial: false }; });
+}
+
+/* ---------- live exchange flow ---------- */
+const LIVE = { btc: { prev: {}, flows: [], since: 0, okAt: 0, busy: false }, eth: { prev: {}, flows: [], since: 0, okAt: 0, busy: false } };
+const lastPrice = {};
+function loadLive() { try { const j = JSON.parse(localStorage.getItem("chainpulse-live") || "{}"); for (const k of ["btc", "eth"]) { const d = j[k];
+  if (d && Date.now() - d.prevT < 6 * 3600e3) { LIVE[k].prev = d.prev || {}; LIVE[k].flows = (d.flows || []).filter(f => Date.now() - f[0] < 864e5); LIVE[k].since = d.since || 0; } } } catch (e) {} }
+function saveLive() { try { const o = {}; for (const k of ["btc", "eth"]) o[k] = { prev: LIVE[k].prev, prevT: LIVE[k].okAt, flows: LIVE[k].flows, since: LIVE[k].since }; localStorage.setItem("chainpulse-live", JSON.stringify(o)); } catch (e) {} }
+async function fetchBalances(key) {
+  const out = {};
+  if (key === "btc") {
+    for (const [, addr] of BTC_LIVE) {
+      const j = await soft(getJSON(`${MEMPOOL}/address/${addr}`, null, "mempool.space"));
+      if (j && j.chain_stats) { const c = j.chain_stats, m = j.mempool_stats || { funded_txo_sum: 0, spent_txo_sum: 0 };
+        out[addr] = (c.funded_txo_sum - c.spent_txo_sum + m.funded_txo_sum - m.spent_txo_sum) / 1e8; }
+    }
+  } else {
+    const r = await rpcBatch(ETH_WALLETS.map(w => ["eth_getBalance", [w[1], "latest"]]));
+    ETH_WALLETS.forEach((w, i) => { out[w[1]] = weiToEth(r[i]); });
+  }
+  return out;
+}
+async function livePoll(key) {
+  const L = LIVE[key], cfg = LIVE_CFG[key];
+  if (L.busy) return; L.busy = true;
+  try {
+    const b = await fetchBalances(key), now = Date.now(); let got = 0;
+    cfg.wallets.forEach((w, i) => {
+      const v = b[w[1]]; if (!ok(v)) return; got++;
+      const p = L.prev[w[1]];
+      if (ok(p) && Math.abs(v - p) >= cfg.min / 50) L.flows.push([now, v - p, i]);
+      L.prev[w[1]] = v;
+    });
+    if (got) { if (!L.since) L.since = now; L.okAt = now; }
+    L.flows = L.flows.filter(f => now - f[0] < 864e5).slice(-2000);
+    saveLive();
+  } catch (e) { /* keep last state */ }
+  finally { L.busy = false; renderLive(key); }
+}
+function liveNet(key, ms) { const t = Date.now() - ms; return LIVE[key].flows.reduce((s, f) => f[0] >= t ? s + f[1] : s, 0); }
+function liveInfo(key) { const L = LIVE[key]; if (!L.since) return null; const start = Math.max(L.since, Date.now() - 864e5); return { net: liveNet(key, 864e5), start, spanMin: (Date.now() - start) / 60000 }; }
+function renderLive(key) {
+  const el = document.getElementById(key + "-live"); if (!el) return;
+  const L = LIVE[key], cfg = LIVE_CFG[key], unit = key.toUpperCase(), px = lastPrice[key], info = liveInfo(key);
+  const fresh = L.okAt && Date.now() - L.okAt < cfg.every * 3;
+  let h = `<div class="livehead"><h2>Live exchange flow</h2><span class="dot ${fresh ? "live" : L.okAt ? "err" : ""}"></span></div>`;
+  if (!info) { el.innerHTML = h + `<div class="note">Connecting to ${cfg.wallets.length} exchange wallets…</div>`; return; }
+  const n1 = liveNet(key, 3600e3), tm = t => new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const flowCell = x => `<span class="${x > 0 ? "down" : x < 0 ? "up" : "mut"}">${signed(x, Math.abs(x) < 100 ? 1 : 0)} ${unit}</span>`;
+  h += `<div class="stats">${stat("Net, last hour", flowCell(n1))}${stat("Net since " + tm(info.start), flowCell(info.net))}</div>`;
+  const big = Math.abs(n1) >= cfg.min * 4;
+  h += `<div class="note" style="margin-top:8px">${!big ? "No significant net movement in the last hour." : n1 > 0 ? "▼ Coins are moving onto exchanges: sell pressure building." : "▲ Coins are leaving exchanges: accumulation."}</div>`;
+  const ev = L.flows.filter(f => Math.abs(f[1]) >= cfg.min).slice(-40).reverse();
+  if (ev.length) h += `<ul class="feed">` + ev.map(f => { const inn = f[1] > 0, w = cfg.wallets[f[2]];
+    return `<li><span class="t num">${tm(f[0])}</span><span>${esc(w ? w[0] : "wallet")}</span><span class="a num ${inn ? "down" : "up"}"><span class="tag">${inn ? "IN" : "OUT"}</span>${fmt(Math.abs(f[1]), Math.abs(f[1]) < 100 ? 1 : 0)} ${unit}${ok(px) ? ` <span class="mut">$${compact(Math.abs(f[1]) * px)}</span>` : ""}</span></li>`; }).join("") + `</ul>`;
+  else h += `<div class="note">Watching ${cfg.wallets.length} wallets. No transfers of ${cfg.min}+ ${unit} since ${tm(info.start)}.</div>`;
+  h += `<div class="note" style="margin-top:8px">Checked every ${cfg.every / 1000}s${key === "btc" ? ", including unconfirmed transactions" : ""}. IN = onto an exchange (bearish), OUT = off an exchange (bullish).</div>`;
+  el.innerHTML = h;
+}
+
+/* ---------- scoring ---------- */
+function score(key, mkt, net, wallets, lv) {
+  const comps = {}, dir = [];
+  if (mkt && ok(mkt.chg24)) { comps.mom = clamp(mkt.chg24 / 0.05) * 0.6 + clamp(mkt.chg7d / 0.12) * 0.4; dir.push([0.45, comps.mom]); }
+  if (mkt && ok(mkt.buy24)) { comps.flow = clamp((mkt.buy24 - 0.5) / 0.05); dir.push([0.35, comps.flow]); }
+  const w = (wallets || []).filter(r => ok(r.net));
+  if (w.length) { comps.exNet = w.reduce((s, r) => s + r.net, 0); comps.exSrc = `24h net change across ${w.length} watched wallets`; }
+  else if (lv && lv.spanMin >= 15) { comps.exNet = lv.net; comps.exSrc = `Live net change over the last ${lv.spanMin >= 90 ? (lv.spanMin / 60).toFixed(1) + "h" : Math.round(lv.spanMin) + " min"}`; }
+  if (ok(comps.exNet)) { comps.ex = clamp(-comps.exNet / EXCH_SCALE[key]); dir.push([0.2, comps.ex]); }
+  comps.act = net && ok(net.activity) ? net.activity : NaN;
+  const d = wavg(dir), a = ok(comps.act) ? comps.act : 0.5;
+  const s = ok(d) ? Math.round(100 * clamp(d * (0.6 + 0.8 * a))) : NaN;
+  let label = "No reading", tone = "flat";
+  if (ok(s)) {
+    if (s > 40) { label = "Strong demand"; tone = "up"; }
+    else if (s > 15) { label = "Demand building"; tone = "up"; }
+    else if (s >= -15) { label = "Neutral"; tone = "flat"; }
+    else if (s >= -40) { label = "Selling pressure"; tone = "down"; }
+    else { label = "Sell-off"; tone = "down"; }
+  }
+  const bits = [];
+  if (ok(comps.act)) bits.push(a > 0.65 ? "Network is busy" : a < 0.35 ? "Network is quiet" : "Network activity is normal");
+  if (mkt && ok(mkt.chg24)) bits.push(`price ${mkt.chg24 >= 0 ? "up" : "down"} ${Math.abs(mkt.chg24 * 100).toFixed(1)}% in 24h`);
+  if (mkt && ok(mkt.buy24)) bits.push(`${mkt.buy24 >= 0.5 ? "buyers" : "sellers"} are the aggressors (${(Math.max(mkt.buy24, 1 - mkt.buy24) * 100).toFixed(1)}% of volume)`);
+  if (ok(comps.exNet) && Math.abs(comps.exNet) > EXCH_SCALE[key] * 0.1) bits.push(`watched exchange wallets ${comps.exNet > 0 ? "gained" : "shed"} ${compact(Math.abs(comps.exNet))} ${key.toUpperCase()}`);
+  let why = bits.join(", ") + (bits.length ? "." : "");
+  if (ok(s) && ok(comps.act)) {
+    if (a > 0.65 && s < -15) why += " Heavy on-chain traffic alongside falling price points to coins being moved to sell.";
+    else if (a > 0.65 && s > 15) why += " Heavy on-chain traffic alongside rising price points to real demand for block space.";
+    else if (a < 0.35 && Math.abs(s) > 15) why += " The move has little on-chain confirmation so far.";
+  }
+  return { s, label, tone, why, comps };
+}
+
+/* ---------- rendering ---------- */
+function spark(series, tone) {
+  const a = (series || []).filter(ok); if (a.length < 2) return "";
+  const lo = Math.min(...a), hi = Math.max(...a), W = 120, H = 40, r = hi - lo || 1;
+  const pts = a.map((y, i) => `${(i / (a.length - 1) * W).toFixed(1)},${(H - 3 - (y - lo) / r * (H - 6)).toFixed(1)}`).join(" ");
+  return `<svg class="spark" viewBox="0 0 ${W} ${H}" role="img" aria-label="trend"><polyline fill="none" stroke="var(--${tone})" stroke-width="1.6" stroke-linejoin="round" points="${pts}"/></svg>`;
+}
+function bar(v) { // v in -1..1, drawn from centre
+  if (!ok(v)) return `<div class="bar"></div>`;
+  const w = Math.abs(v) * 50, left = v >= 0 ? 50 : 50 - w;
+  return `<div class="bar"><i style="left:${left}%;width:${w}%;background:var(--${v >= 0 ? "up" : "down"})"></i></div>`;
+}
+function comp(name, valueHtml, desc, v) { return `<div class="comp"><div class="n">${name}</div><div class="v num">${valueHtml}</div><div class="d">${desc}</div>${bar(v)}</div>`; }
+function stat(k, v) { return `<div class="stat"><div class="k">${k}</div><div class="s num">${v}</div></div>`; }
+
+function render(key, title, mkt, net, wallets, hist) {
+  const el = document.getElementById(key + "-main"), unit = key.toUpperCase();
+  if (mkt) lastPrice[key] = mkt.price;
+  if (!mkt && !net) { el.innerHTML = `<div class="asset">${title}</div><p class="note">No data source responded. Check your connection, then press Refresh.</p>`; return null; }
+  const sc = score(key, mkt, net, wallets, liveInfo(key)), c = sc.comps;
+  const tone24 = mkt ? cls(mkt.chg24) : "mut";
+  let h = `<div class="top"><div><div class="asset">${title}</div>
+    <div class="price num">${mkt ? "$" + fmt(mkt.price, mkt.price < 100 ? 2 : 0) : "—"}</div>
+    <div class="chg num"><span class="${tone24}">${mkt ? arrow(mkt.chg24) + " " + pct(mkt.chg24) : "—"} 24h</span> · <span class="${mkt ? cls(mkt.chg7d) : "mut"}">${mkt ? pct(mkt.chg7d) : "—"} 7d</span></div></div>
+    <div class="sparkwrap">${mkt ? spark(mkt.series, tone24 === "mut" ? "flat" : tone24) : ""}7-day price</div></div>`;
+  h += `<div class="verdict ${sc.tone}"><div class="lab">${sc.tone === "up" ? "▲" : sc.tone === "down" ? "▼" : "■"} ${sc.label} <span class="num mut" style="font-size:14px;font-weight:600">${ok(sc.s) ? signed(sc.s) : ""}</span></div><div class="why">${esc(sc.why)}</div></div>`;
+  h += `<div class="gauge" role="img" aria-label="Score ${ok(sc.s) ? sc.s : "unavailable"} on a scale from -100 sell-off to +100 demand">${ok(sc.s) ? `<i style="left:${(sc.s + 100) / 2}%"></i>` : ""}</div><div class="gl"><span>Sell-off</span><span>Neutral</span><span>Demand</span></div>`;
+
+  h += `<h2>What is driving it</h2>`;
+  const actV = ok(c.act) ? (c.act - 0.5) * 2 : NaN;
+  h += comp("Network activity", ok(c.act) ? Math.round(c.act * 100) + " / 100" : "—",
+    !net ? "Network data unavailable." : key === "btc"
+      ? `Next-block fee ${fmt(net.fee)} sat/vB, backlog ${ok(net.backlog) ? net.backlog.toFixed(1) : "—"} blocks, daily transactions ${pct(net.txTrend)} vs 30-day average.`
+      : `Blocks ${ok(net.util) ? (net.util * 100).toFixed(0) : "—"}% full (target 50%), base fee ${ok(net.baseNow) ? net.baseNow.toFixed(2) : "—"} gwei${ok(net.baseTrend) ? `, ${pct(net.baseTrend, 0)} vs ${net.hours.toFixed(0)}h median` : ""}${ok(net.txTrend) ? `, daily transactions ${pct(net.txTrend)} vs average` : ""}.`, actV);
+  h += comp("Price momentum", ok(c.mom) ? signed(c.mom * 100) : "—", mkt ? `${pct(mkt.chg24)} over 24h, ${pct(mkt.chg7d)} over 7 days.` : "Market data unavailable.", c.mom);
+  h += comp("Order flow", mkt && ok(mkt.buy24) ? (mkt.buy24 * 100).toFixed(1) + "% buys" : "—",
+    mkt && ok(mkt.buy24) ? `Taker-buy share of 24h volume (7-day: ${(mkt.buy7d * 100).toFixed(1)}%). Volume is ${ok(mkt.volRatio) ? mkt.volRatio.toFixed(2) + "×" : "—"} the 7-day daily average.` : "Buy/sell split unavailable from this source.", c.flow);
+  h += comp("Exchange wallets", ok(c.exNet) ? signed(c.exNet, 0) + " " + unit : "—",
+    ok(c.exNet) ? `${c.exSrc}. ${c.exNet > 0 ? "Inflow leans bearish." : c.exNet < 0 ? "Outflow leans bullish." : "No movement."}` : "Building a reading from the live feed (needs about 15 minutes).", c.ex);
+
+  if (net) {
+    h += `<h2>Network now</h2><div class="stats">`;
+    if (key === "btc") {
+      h += stat("Block height", fmt(net.height)) + stat("Last block", ok(net.blockAge) ? Math.max(0, Math.round(net.blockAge / 60)) + " min ago" : "—")
+        + stat("Next-block fee", ok(net.fee) ? fmt(net.fee) + " sat/vB" : "—") + stat("Economy fee", ok(net.feeEco) ? fmt(net.feeEco) + " sat/vB" : "—")
+        + stat("Unconfirmed txs", fmt(net.mpCount)) + stat("Txs per block", fmt(net.blockTx))
+        + stat("Txs yesterday", compact(net.txDay)) + stat("vs 30-day avg", `<span class="${cls(net.txTrend)}">${pct(net.txTrend)}</span>`);
+    } else {
+      h += stat("Block height", fmt(net.height)) + stat("Block fullness (1h)", ok(net.util) ? (net.util * 100).toFixed(1) + "%" : "—")
+        + stat("Base fee", ok(net.baseNow) ? net.baseNow.toFixed(3) + " gwei" : "—") + stat(`Median (${ok(net.hours) ? net.hours.toFixed(0) : "—"}h)`, ok(net.baseMed) ? net.baseMed.toFixed(3) + " gwei" : "—")
+        + stat("Txs yesterday", compact(net.txDay)) + stat("vs 30-day avg", `<span class="${cls(net.txTrend)}">${pct(net.txTrend)}</span>`);
+    }
+    h += `</div>`;
+  }
+  if (wallets && wallets.length) {
+    h += `<details class="inner" ${openW[key] ? "open" : ""} data-w="${key}"><summary>Wallet balances, 24h change (${wallets.length})</summary><table class="wal"><tbody>` + wallets.map(r =>
+      `<tr><td>${esc(r.name)}</td><td class="num">${compact(r.bal)} ${unit}</td><td class="num ${ok(r.net) ? cls(r.net) : "mut"}">${ok(r.net) ? (r.partial ? "≥ " : "") + signed(r.net, 0) : "—"}</td></tr>`).join("")
+      + `</tbody></table><div class="note" style="margin-top:6px">A sample of known wallets, not total exchange flow.</div></details>`;
+  }
+  if (hist && hist.length > 2) h += `<h2>Score since you opened this (${hist.length} readings)</h2>${spark(hist, sc.tone)}`;
+  el.innerHTML = h;
+  return sc.s;
+}
+
+/* ---------- loop ---------- */
+var openW = { btc: false, eth: false };
+const history = { btc: [], eth: [] };
+function loadHist() { try { const j = JSON.parse(localStorage.getItem("chainpulse-hist") || "{}"); for (const k of ["btc", "eth"]) if (Array.isArray(j[k])) history[k] = j[k].filter(p => Date.now() - p[0] < 7 * 864e5); } catch (e) {} }
+function saveHist() { try { localStorage.setItem("chainpulse-hist", JSON.stringify(history)); } catch (e) {} }
+function pushHist(k, s) { if (!ok(s)) return; const h = history[k], last = h[h.length - 1]; if (!last || Date.now() - last[0] > 4 * 60000) { h.push([Date.now(), s]); if (h.length > 600) h.shift(); } else last[1] = s; }
+
+let busy = false;
+async function tick() {
+  if (busy) return; busy = true;
+  const dot = document.getElementById("dot"), stamp = document.getElementById("stamp");
+  stamp.textContent = "Updating…";
+  try {
+    const [bm, em, bn, en, bw, ew] = await Promise.all([
+      soft(market("BTC")), soft(market("ETH")), soft(btcNetwork()), soft(ethNetwork()),
+      soft(cached("btcW", SLOW_TTL, btcWallets)), soft(cached("ethW", SLOW_TTL, ethWallets))
+    ]);
+    pushHist("btc", render("btc", "Bitcoin · BTC", bm, bn && bn.parts.length ? bn : null, bw, history.btc.map(p => p[1])));
+    pushHist("eth", render("eth", "Ethereum · ETH", em, en && en.parts.length ? en : null, ew, history.eth.map(p => p[1])));
+    saveHist();
+    const any = bm || em || (bn && bn.parts.length) || (en && en.parts.length);
+    dot.className = "dot " + (any ? "live" : "err");
+    stamp.textContent = any ? "Updated " + new Date().toLocaleTimeString() : "Offline";
+    document.getElementById("src").innerHTML = "Sources: " + Object.keys(sources).map(k => `<span class="${sources[k] ? "" : "bad"}">${esc(k)}${sources[k] ? "" : " (unavailable)"}</span>`).join(" · ");
+  } catch (e) { dot.className = "dot err"; stamp.textContent = "Error: " + e.message; }
+  finally { busy = false; }
+}
+if (typeof document !== "undefined" && document.getElementById("refresh")) {
+  document.getElementById("refresh").addEventListener("click", tick);
+  document.addEventListener("toggle", e => { const k = e.target && e.target.dataset && e.target.dataset.w; if (k) openW[k] = e.target.open; }, true);
+  loadHist(); loadLive(); tick(); setInterval(() => { if (!document.hidden) tick(); }, REFRESH_MS);
+  for (const k of ["btc", "eth"]) { renderLive(k); livePoll(k); setInterval(() => { if (!document.hidden) livePoll(k); }, LIVE_CFG[k].every); }
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) tick(); });
+}
+</script>
+</body>
+</html>
